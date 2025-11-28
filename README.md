@@ -6,8 +6,7 @@ Allows throwing items on the ground by clicking them in the inventory screen.
 
 ## Installation
 
-This is a modded version of the original Yeet mod by ThinkInvis, with fixes for compatibility with the Alloy Vultures DLC and some additional features (see changelog for details).
-###### Original mod under: https://thunderstore.io/package/ThinkInvis/Yeet/
+This is a modded version of the original Yeet mod by ThinkInvis, with fixes for compatibility with the Alloy Vultures DLC and some additional features (see changelog for details).<br>###### Original mod under: https://thunderstore.io/package/ThinkInvis/Yeet/
 	
 **Use of a mod manager is recommended**. If not using a mod manager: Extract ThinkInvis-Yeet-[version].zip into your BepInEx plugins folder such that the following path exists: `[RoR2 game folder]/BepInEx/Plugins/ThinkInvis-Yeet-[version]/Yeet.dll`.
 
