@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "Yeet": {
+      "commandName": "Project",
+      "remoteDebugEnabled": false,
+      "nativeDebugging": false
+    }
+  }
+}

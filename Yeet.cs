@@ -78,6 +78,10 @@ namespace ThinkInvisible.Jfork.Yeet {
             [AutoConfigRoOCheckbox()]
             public bool announce { get; private set; } = true;
 
+            [AutoConfig("If true, prevents you from dropping your last void item so you always have atleast one.")]
+            [AutoConfigRoOCheckbox()]
+            public bool theConcequencesOfYourActions { get; private set; } = true;
+
             [AutoConfig("Minimum speed, in player view direction, to add to droplets for dropped items.",
                 AutoConfigFlags.None, 0f, float.MaxValue)]
             [AutoConfigRoOSlider("{0:N1} m/s", 0f, 500f)]
@@ -259,8 +263,7 @@ namespace ThinkInvisible.Jfork.Yeet {
             float throwForce = Mathf.Lerp(serverConfig.lowThrowForce, serverConfig.highThrowForce, Mathf.Clamp01(args.TryGetArgFloat(2) ?? 0f));
             int throwCount = 1;
 
-            PickupIndex pickup;
-            
+            PickupIndex pickup;  
             string pickupText;
             if(isEquipment) {
                 var edef = EquipmentCatalog.GetEquipmentDef((EquipmentIndex)rawInd);
@@ -304,7 +307,7 @@ namespace ThinkInvisible.Jfork.Yeet {
                     || (serverBlacklist.preventCantRemove && !idef.canRemove)
                     || ((!itier)
                         ? serverBlacklist.preventTierless
-                        : _blacklistTier.Contains(itier.name))) {
+                        : _blacklistTier.Contains(itier.name) )) {
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: tier blacklisted by server.");
                     return;
                 }
@@ -312,6 +315,12 @@ namespace ThinkInvisible.Jfork.Yeet {
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: item blacklisted by server.");
                     return;
                 }
+                if (serverConfig.theConcequencesOfYourActions && count < 2 && (itier.name == "VoidTier1Def" || itier.name == "VoidTier2Def" || itier.name == "VoidTier3Def" || itier.name == "VoidBossDef"))
+                { 
+                    NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: you must live with the consequences of your actions.");
+                    return;
+                }
+
                 var attemptThrowCount = args.TryGetArgInt(3) ?? 1;
                 if(attemptThrowCount < 0)
                     attemptThrowCount = Mathf.CeilToInt(count / ((-attemptThrowCount) * 100f));
@@ -433,7 +442,7 @@ namespace ThinkInvisible.Jfork.Yeet {
         public CharacterBody yeeter;
         public float age = 0f;
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Used by UnityEngine")]
+
         void FixedUpdate() {
             age += Time.fixedDeltaTime;
         }
@@ -464,4 +473,3 @@ namespace ThinkInvisible.Jfork.Yeet {
                 YeetPlugin._logger.LogError("Received inventory click event with no active local players!");
         }
     }
-}
