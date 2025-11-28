@@ -473,4 +473,3 @@ namespace ThinkInvisible.Jfork.Yeet {
                 YeetPlugin._logger.LogError("Received inventory click event with no active local players!");
         }
     }
-}
