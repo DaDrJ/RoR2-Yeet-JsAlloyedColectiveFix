@@ -17,14 +17,14 @@ using Random = UnityEngine.Random;
 
 [assembly: HG.Reflection.SearchableAttribute.OptIn]
 
-namespace ThinkInvisible.Yeet {
+namespace ThinkInvisible.Jfork.Yeet {
     [BepInPlugin(ModGuid, ModName, ModVer)]
     [BepInDependency(R2API.R2API.PluginGUID, R2API.R2API.PluginVersion)]
     [BepInDependency(TILER2Plugin.ModGuid, TILER2Plugin.ModVer)]
     public class YeetPlugin:BaseUnityPlugin {
-        public const string ModVer = "3.0.4";
+        public const string ModVer = "3.0.5";
         public const string ModName = "Yeet";
-        public const string ModGuid = "com.ThinkInvisible.Yeet";
+        public const string ModGuid = "com.ThinkInvisible.Jfork.Yeet";
 
         public class ServerBlacklist : AutoConfigContainer {
             [AutoConfig("If true, all equipment cannot be dropped.")]
@@ -77,6 +77,10 @@ namespace ThinkInvisible.Yeet {
             [AutoConfig("If true, dropping items will be announced in global chat.")]
             [AutoConfigRoOCheckbox()]
             public bool announce { get; private set; } = true;
+
+            [AutoConfig("If true, prevents you from dropping your last void item so you always have atleast one.")]
+            [AutoConfigRoOCheckbox()]
+            public bool theConcequencesOfYourActions { get; private set; } = true;
 
             [AutoConfig("Minimum speed, in player view direction, to add to droplets for dropped items.",
                 AutoConfigFlags.None, 0f, float.MaxValue)]
@@ -173,7 +177,7 @@ namespace ThinkInvisible.Yeet {
             _blacklistTier.Clear();
             _blacklistTier.UnionWith(serverBlacklist.blacklistTier.Split(',').Select(x => x.Trim()));
         }
-
+        
         [ConCommand(commandName = "yeet", flags = ConVarFlags.ExecuteOnServer, helpText = "Requests the server to drop an item from your character. Argument 1: item index or partial name. Argument 2: if true, drop equipment instead. Argument 3: throw force. Argument 4: item count.")]
         private static void ConCmdYeet(ConCommandArgs args) {
             if(!serverConfig.allowYeet) {
@@ -259,7 +263,7 @@ namespace ThinkInvisible.Yeet {
             float throwForce = Mathf.Lerp(serverConfig.lowThrowForce, serverConfig.highThrowForce, Mathf.Clamp01(args.TryGetArgFloat(2) ?? 0f));
             int throwCount = 1;
 
-            PickupIndex pickup;
+            PickupIndex pickup;  
             string pickupText;
             if(isEquipment) {
                 var edef = EquipmentCatalog.GetEquipmentDef((EquipmentIndex)rawInd);
@@ -282,14 +286,14 @@ namespace ThinkInvisible.Yeet {
                     return;
                 }
 
-                args.senderBody.inventory.SetEquipmentIndex(EquipmentIndex.None);
+                args.senderBody.inventory.SetEquipmentIndex(EquipmentIndex.None,true);
 
                 pickup = PickupCatalog.FindPickupIndex((EquipmentIndex)rawInd);
             } else {
                 var fakeInv = args.senderBody.GetComponent<FakeInventory>();
                 var count = fakeInv
                     ? fakeInv.GetRealItemCount((ItemIndex)rawInd)
-                    : args.senderBody.inventory.GetItemCount((ItemIndex) rawInd);
+                    : args.senderBody.inventory.GetItemCountPermanent((ItemIndex) rawInd);
                 var idef = ItemCatalog.GetItemDef((ItemIndex)rawInd);
                 var itier = ItemTierCatalog.GetItemTierDef(idef.tier);
                 var icolor = ColorCatalog.GetColorHexString(itier.colorIndex);
@@ -303,7 +307,7 @@ namespace ThinkInvisible.Yeet {
                     || (serverBlacklist.preventCantRemove && !idef.canRemove)
                     || ((!itier)
                         ? serverBlacklist.preventTierless
-                        : _blacklistTier.Contains(itier.name))) {
+                        : _blacklistTier.Contains(itier.name) )) {
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: tier blacklisted by server.");
                     return;
                 }
@@ -311,11 +315,17 @@ namespace ThinkInvisible.Yeet {
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: item blacklisted by server.");
                     return;
                 }
+                if (serverConfig.theConcequencesOfYourActions && count < 2 && (itier.name == "VoidTier1Def" || itier.name == "VoidTier2Def" || itier.name == "VoidTier3Def" || itier.name == "VoidBossDef"))
+                { 
+                    NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: you must live with the consequences of your actions.");
+                    return;
+                }
+
                 var attemptThrowCount = args.TryGetArgInt(3) ?? 1;
                 if(attemptThrowCount < 0)
                     attemptThrowCount = Mathf.CeilToInt(count / ((-attemptThrowCount) * 100f));
                 throwCount = Mathf.Clamp(attemptThrowCount, 1, Mathf.Min(serverConfig.maxThrowCount, count));
-                args.senderBody.inventory.RemoveItem((ItemIndex)rawInd, throwCount);
+                args.senderBody.inventory.RemoveItemPermanent((ItemIndex)rawInd, throwCount);
                 pickup = PickupCatalog.FindPickupIndex((ItemIndex)rawInd);
             }
 
@@ -328,11 +338,11 @@ namespace ThinkInvisible.Yeet {
                 pdyd.yeeter = args.senderBody;
                 var pdcComponent = obj.GetComponent<PickupDropletController>();
                 if(pdcComponent) {
-                    pdcComponent.NetworkpickupIndex = pickup;
-                    pdcComponent.createPickupInfo = new GenericPickupController.CreatePickupInfo {
-                        rotation = Quaternion.identity,
-                        pickupIndex = pickup
-                    };
+                  pdcComponent.pickupState = pdcComponent.pickupState.WithPickupIndex(pickup);
+                  pdcComponent.createPickupInfo = new GenericPickupController.CreatePickupInfo {
+                      rotation = Quaternion.identity,
+                      pickup = new UniquePickup(pickup)
+                  }; 
                 }
 
                 var rbdy = obj.GetComponent<Rigidbody>();
@@ -388,13 +398,13 @@ namespace ThinkInvisible.Yeet {
                     var newPickup = Instantiate(yeetPickupPrefab, self.createPickupInfo.position, self.createPickupInfo.rotation);
                     var pickupController = newPickup.GetComponent<GenericPickupController>();
                     if(pickupController) {
-                        pickupController.NetworkpickupIndex = self.createPickupInfo.pickupIndex;
+                        pickupController.Network_pickupState = self.createPickupInfo.pickup;
                         if(serverConfig.preventRecycling)
                             pickupController.NetworkRecycled = true;
                     }
                     var pickupIndexNetworker = newPickup.GetComponent<PickupIndexNetworker>();
                     if(pickupIndexNetworker)
-                        pickupIndexNetworker.NetworkpickupIndex = self.createPickupInfo.pickupIndex;
+                        pickupIndexNetworker.NetworkpickupState = self.createPickupInfo.pickup;
                     //no options, should only ever yeet one item
                     var pickupYeetData = newPickup.GetComponent<YeetData>();
                     pickupYeetData.age = yd.age;
@@ -432,7 +442,7 @@ namespace ThinkInvisible.Yeet {
         public CharacterBody yeeter;
         public float age = 0f;
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Used by UnityEngine")]
+
         void FixedUpdate() {
             age += Time.fixedDeltaTime;
         }
