@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
 	<LangVersion>9</LangVersion>
+	<TargetFramework>netstandard2.1</TargetFramework>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
@@ -16,10 +16,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="BepInEx.Core" Version="5.4.21" />
-    <PackageReference Include="MMHOOK.RoR2" Version="2025.11.19" />
-    <PackageReference Include="R2API.Core" Version="5.2.0" />
+    <PackageReference Include="MMHOOK.RoR2" Version="2025.12.9" />
+    <PackageReference Include="R2API.Core" Version="5.3.0" />
     <PackageReference Include="R2API.Prefab" Version="1.1.1" />
-    <PackageReference Include="RiskOfRain2.GameLibs" Version="1.4.0-r.0" />
+    <PackageReference Include="RiskOfRain2.GameLibs" Version="1.4.1-r.0" />
     <PackageReference Include="UnityEngine.Modules" Version="[2021.3.33]" />
   </ItemGroup>
   
@@ -28,15 +28,17 @@
       <HintPath>lib\MMHOOK_RoR2.dll</HintPath>
     </Reference>
     <Reference Include="TILER2">
-      <HintPath>..\TILER2\Build\TILER2\TILER2.dll</HintPath>
+      <HintPath>..\RoR2-TILER2\bin\Debug\netstandard2.1\TILER2.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>..\..\..\Downloads\RoR2GenericModTemplate\REFERENCES - DO NOT DELETE\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
   </ItemGroup>
-
+  
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="xcopy &quot;$(TargetPath)&quot; &quot;$(ProjectDir)Build\$(ProjectName)&quot; /Y&#xD;&#xA;xcopy &quot;$(ProjectDir)ModMeta&quot; &quot;$(ProjectDir)Build\$(ProjectName)&quot; /Y" />
+    <Exec Command="call &quot;C:\Users\J\source\repos\RoR2-Yeet\FileName.bat&quot;" />
   </Target>
+
+
 
 </Project>

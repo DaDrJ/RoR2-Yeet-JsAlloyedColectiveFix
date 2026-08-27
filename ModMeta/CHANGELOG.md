@@ -1,5 +1,7 @@
 ## Changelog
-
+**3.0.7**
+- Now dependant on TILER2'nt, an edited and most importantly not depricated version of TILER2.
+- Fixed Command Extra Cheese setting not working. 
 
 **3.0.6**
 - Added new config option wich allows you to stop people from dropping their last void item.

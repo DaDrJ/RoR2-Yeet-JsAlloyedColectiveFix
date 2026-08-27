@@ -1,32 +1,37 @@
-﻿using RoR2;
-using BepInEx;
-using R2API.Utils;
-using UnityEngine;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
+using R2API;
+using R2API.Utils;
+using RoR2;
+using System;
+using System.Collections.Generic;
 using System.Linq;
+using TILER2;
+using UnityEngine;
+using UnityEngine.AddressableAssets;
 using UnityEngine.EventSystems;
 using UnityEngine.Networking;
-using R2API;
-using UnityEngine.AddressableAssets;
-using TILER2;
+using UnityEngine.UIElements;
+using static Rewired.InputMapper;
 using Path = System.IO.Path;
-using System.Collections.Generic;
-using System;
 using Random = UnityEngine.Random;
 
 [assembly: HG.Reflection.SearchableAttribute.OptIn]
 
-namespace ThinkInvisible.Jfork.Yeet {
+namespace ThinkInvisible.Jfork.Yeet
+{
     [BepInPlugin(ModGuid, ModName, ModVer)]
     [BepInDependency(R2API.R2API.PluginGUID, R2API.R2API.PluginVersion)]
-    [BepInDependency(TILER2Plugin.ModGuid, TILER2Plugin.ModVer)]
-    public class YeetPlugin:BaseUnityPlugin {
-        public const string ModVer = "3.0.5";
+
+    public class YeetPlugin : BaseUnityPlugin
+    {
+        public const string ModVer = "3.0.7";
         public const string ModName = "Yeet";
         public const string ModGuid = "com.ThinkInvisible.Jfork.Yeet";
 
-        public class ServerBlacklist : AutoConfigContainer {
+        public class ServerBlacklist : AutoConfigContainer
+        {
             [AutoConfig("If true, all equipment cannot be dropped.")]
             [AutoConfigRoOCheckbox()]
             public bool preventEquipment { get; private set; } = false;
@@ -61,7 +66,8 @@ namespace ThinkInvisible.Jfork.Yeet {
             public string blacklistItem { get; private set; } = "";
         }
 
-        public class ServerConfig : AutoConfigContainer {
+        public class ServerConfig : AutoConfigContainer
+        {
             [AutoConfig("Disable/enable control for the entire mod. Set to false to temporarily disable all mod functionality.")]
             [AutoConfigRoOCheckbox()]
             public bool allowYeet { get; private set; } = true;
@@ -78,7 +84,7 @@ namespace ThinkInvisible.Jfork.Yeet {
             [AutoConfigRoOCheckbox()]
             public bool announce { get; private set; } = true;
 
-            [AutoConfig("If true, prevents you from dropping your last void item so you always have atleast one.")]
+            [AutoConfig("If true, prevents you from dropping your last void item so you always have at least one.")]
             [AutoConfigRoOCheckbox()]
             public bool theConcequencesOfYourActions { get; private set; } = true;
 
@@ -108,7 +114,8 @@ namespace ThinkInvisible.Jfork.Yeet {
             public float yeetCooldown { get; private set; } = 10f;
         }
 
-        public class ClientConfig : AutoConfigContainer {
+        public class ClientConfig : AutoConfigContainer
+        {
             [AutoConfig("Click hold time (sec) required to reach HighThrowForce.",
             AutoConfigFlags.None, 0f, float.MaxValue)]
             [AutoConfigRoOSlider("{0:N1} s", 0f, 10f)]
@@ -134,13 +141,16 @@ namespace ThinkInvisible.Jfork.Yeet {
         private static readonly HashSet<string> _blacklistTier = new();
         private static readonly HashSet<string> _blacklistItem = new();
 
-        public void Awake() {
+        public void Awake()
+        {
             _logger = this.Logger;
             ConfigFile cfgFile = new(Path.Combine(Paths.ConfigPath, ModGuid + ".cfg"), true);
 
-            serverBlacklist.ConfigEntryChanged += (sender, args) => {
-                if(args.target.boundProperty.Name == nameof(serverBlacklist.blacklistTier)
-                    || args.target.boundProperty.Name == nameof(serverBlacklist.blacklistItem)) {
+            serverBlacklist.ConfigEntryChanged += (sender, args) =>
+            {
+                if (args.target.boundProperty.Name == nameof(serverBlacklist.blacklistTier)
+                    || args.target.boundProperty.Name == nameof(serverBlacklist.blacklistItem))
+                {
                     UpdateBlacklists();
                 }
             };
@@ -159,48 +169,59 @@ namespace ThinkInvisible.Jfork.Yeet {
             On.RoR2.GenericPickupController.OnTriggerStay += GenericPickupController_OnTriggerStay;
 
             var addrLoad = Addressables.LoadAssetAsync<GameObject>("RoR2/Base/Common/GenericPickup.prefab");
-            addrLoad.Completed += (obj) => {
+            addrLoad.Completed += (obj) =>
+            {
                 var res = obj.Result;
-                if(!res) {
+                if (!res)
+                {
                     _logger.LogError("Failed to load GenericPickup prefab to copy homework off of. The YoinkCooldown setting will not work (no extra cooldown will be added).");
                     return;
                 }
                 var yeetPickupPrefabPrefab = res.InstantiateClone("YeetPickupPrefabPrefab");
                 yeetPickupPrefabPrefab.AddComponent<YeetData>();
+                yeetPickupPrefabPrefab.AddComponent<PickupIndexNetworker>();
+                yeetPickupPrefabPrefab.AddComponent<PickupPickerController>();
                 yeetPickupPrefab = yeetPickupPrefabPrefab.InstantiateClone("YeetPickupPrefab", true);
             };
         }
 
-        void UpdateBlacklists() {
+        void UpdateBlacklists()
+        {
             _blacklistItem.Clear();
             _blacklistItem.UnionWith(serverBlacklist.blacklistItem.Split(',').Select(x => x.Trim()));
             _blacklistTier.Clear();
             _blacklistTier.UnionWith(serverBlacklist.blacklistTier.Split(',').Select(x => x.Trim()));
         }
-        
+
         [ConCommand(commandName = "yeet", flags = ConVarFlags.ExecuteOnServer, helpText = "Requests the server to drop an item from your character. Argument 1: item index or partial name. Argument 2: if true, drop equipment instead. Argument 3: throw force. Argument 4: item count.")]
-        private static void ConCmdYeet(ConCommandArgs args) {
-            if(!serverConfig.allowYeet) {
-                if(args.sender)
+        private static void ConCmdYeet(ConCommandArgs args)
+        {
+            if (!serverConfig.allowYeet)
+            {
+                if (args.sender)
                     NetUtil.ServerSendChatMsg(args.sender, "Yeet mod has been temporarily disabled by the server host.");
                 return;
             }
-            if(!args.senderBody) {
+            if (!args.senderBody)
+            {
                 _logger.LogError("ConCmdYeet: called by nonexistent player!");
                 return;
             }
-            if(args.Count < 1) {
+            if (args.Count < 1)
+            {
                 _logger.LogError("ConCmdYeet: not enough arguments! Need at least 1 (item ID), received 0.");
                 return;
             }
 
             var yd = args.senderBody.GetComponent<YeetData>();
-            if(!yd) {
+            if (!yd)
+            {
                 yd = args.senderBody.gameObject.AddComponent<YeetData>();
                 yd.age = serverConfig.yeetCooldown;
             }
 
-            if(yd.age < serverConfig.yeetCooldown) {
+            if (yd.age < serverConfig.yeetCooldown)
+            {
                 var cdRemaining = serverConfig.yeetCooldown - yd.age;
                 NetUtil.ServerSendChatMsg(args.sender, $"You must wait {cdRemaining:0} second{((cdRemaining < 2) ? "" : "s")} before yeeting another item.");
                 return;
@@ -208,52 +229,72 @@ namespace ThinkInvisible.Jfork.Yeet {
 
             bool isEquipment = args.TryGetArgBool(1) ?? false;
 
-            if(isEquipment ? serverBlacklist.preventEquipment : serverBlacklist.preventItems) return;
+            if (isEquipment ? serverBlacklist.preventEquipment : serverBlacklist.preventItems) return;
 
             int rawInd;
             string itemSearch = args.TryGetArgString(0);
-            if(itemSearch == null) {
+            if (itemSearch == null)
+            {
                 _logger.LogError("ConCmdYeet: could not read first argument (item ID)!");
                 return;
             }
-            else if(int.TryParse(itemSearch, out rawInd)) {
-                if(isEquipment) {
-                    if(!EquipmentCatalog.IsIndexValid((EquipmentIndex)rawInd)) {
+            else if (int.TryParse(itemSearch, out rawInd))
+            {
+                if (isEquipment)
+                {
+                    if (!EquipmentCatalog.IsIndexValid((EquipmentIndex)rawInd))
+                    {
                         _logger.LogError("ConCmdYeet: first argument (equipment ID as integer EquipmentIndex) is out of range; no equipment with that ID exists!");
                         return;
                     }
-                } else {
-                    if(!ItemCatalog.IsIndexValid((ItemIndex)rawInd)) {
+                }
+                else
+                {
+                    if (!ItemCatalog.IsIndexValid((ItemIndex)rawInd))
+                    {
                         _logger.LogError("ConCmdYeet: first argument (item ID as integer ItemIndex) is out of range; no item with that ID exists!");
                         return;
                     }
                 }
-            } else {
-                if(isEquipment) {
-                    var results = EquipmentCatalog.allEquipment.Where((searchInd)=>{
+            }
+            else
+            {
+                if (isEquipment)
+                {
+                    var results = EquipmentCatalog.allEquipment.Where((searchInd) =>
+                    {
                         var iNameToken = EquipmentCatalog.GetEquipmentDef(searchInd).nameToken;
                         var iName = Language.GetString(iNameToken);
                         return iName.ToUpper().Contains(itemSearch.ToUpper());
                     });
-                    if(results.Count() < 1) {
+                    if (results.Count() < 1)
+                    {
                         _logger.LogError("ConCmdYeet: first argument (equipment ID as string EquipmentName) not found in EquipmentCatalog; no equipment with a name containing that string exists!");
                         return;
-                    } else {
-                        if(results.Count() > 1)
+                    }
+                    else
+                    {
+                        if (results.Count() > 1)
                             _logger.LogWarning("ConCmdYeet: first argument (item ID as string EquipmentName) matched multiple equipments; using first.");
                         rawInd = (int)results.First();
                     }
-                } else {
-                    var results = ItemCatalog.allItems.Where((searchInd)=>{
+                }
+                else
+                {
+                    var results = ItemCatalog.allItems.Where((searchInd) =>
+                    {
                         var iNameToken = ItemCatalog.GetItemDef(searchInd).nameToken;
                         var iName = Language.GetString(iNameToken);
                         return iName.ToUpper().Contains(itemSearch.ToUpper());
                     });
-                    if(results.Count() < 1) {
+                    if (results.Count() < 1)
+                    {
                         _logger.LogError("ConCmdYeet: first argument (item ID as string ItemName) not found in ItemCatalog; no item with a name containing that string exists!");
                         return;
-                    } else {
-                        if(results.Count() > 1)
+                    }
+                    else
+                    {
+                        if (results.Count() > 1)
                             _logger.LogWarning("ConCmdYeet: first argument (item ID as string ItemName) matched multiple items; using first.");
                         rawInd = (int)results.First();
                     }
@@ -263,87 +304,107 @@ namespace ThinkInvisible.Jfork.Yeet {
             float throwForce = Mathf.Lerp(serverConfig.lowThrowForce, serverConfig.highThrowForce, Mathf.Clamp01(args.TryGetArgFloat(2) ?? 0f));
             int throwCount = 1;
 
-            PickupIndex pickup;  
+            PickupIndex pickup;
             string pickupText;
-            if(isEquipment) {
+            if (isEquipment)
+            {
                 var edef = EquipmentCatalog.GetEquipmentDef((EquipmentIndex)rawInd);
                 var ecolor = ColorCatalog.GetColorHexString(edef.colorIndex);
                 pickupText = $"<color=#{ecolor}>{Language.GetString(edef.nameToken)}</color>";
 
-                if(args.senderBody.inventory.GetEquipmentIndex() != (EquipmentIndex)rawInd) {
+                if (args.senderBody.inventory.GetEquipmentIndex() != (EquipmentIndex)rawInd)
+                {
                     _logger.LogWarning("ConCmdYeet: someone's trying to drop an equipment they don't have");
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: you don't have it.");
                     return;
                 }
 
-                if(edef.isLunar ? serverBlacklist.preventLunarEquipment : serverBlacklist.preventNonLunarEquipment) {
+                if (edef.isLunar ? serverBlacklist.preventLunarEquipment : serverBlacklist.preventNonLunarEquipment)
+                {
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: tier blacklisted by server.");
                     return;
                 }
 
-                if(_blacklistItem.Contains(edef.nameToken)) {
+                if (_blacklistItem.Contains(edef.nameToken))
+                {
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: equipment blacklisted by server.");
                     return;
                 }
 
-                args.senderBody.inventory.SetEquipmentIndex(EquipmentIndex.None,true);
+                args.senderBody.inventory.SetEquipmentIndex(EquipmentIndex.None, true);
 
                 pickup = PickupCatalog.FindPickupIndex((EquipmentIndex)rawInd);
-            } else {
+            }
+            else
+            {
                 var fakeInv = args.senderBody.GetComponent<FakeInventory>();
                 var count = fakeInv
                     ? fakeInv.GetRealItemCount((ItemIndex)rawInd)
-                    : args.senderBody.inventory.GetItemCountPermanent((ItemIndex) rawInd);
+                    : args.senderBody.inventory.GetItemCountPermanent((ItemIndex)rawInd);
                 var idef = ItemCatalog.GetItemDef((ItemIndex)rawInd);
                 var itier = ItemTierCatalog.GetItemTierDef(idef.tier);
                 var icolor = ColorCatalog.GetColorHexString(itier.colorIndex);
                 pickupText = $"<color=#{icolor}>{Language.GetString(idef.nameToken)}</color>";
-                if(count < 1) {
+                if (count < 1)
+                {
                     _logger.LogWarning("ConCmdYeet: someone's trying to drop an item they don't have any of");
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: you don't have any.");
                     return;
                 }
-                if((serverBlacklist.preventHidden && idef.hidden)
+                if ((serverBlacklist.preventHidden && idef.hidden)
                     || (serverBlacklist.preventCantRemove && !idef.canRemove)
                     || ((!itier)
                         ? serverBlacklist.preventTierless
-                        : _blacklistTier.Contains(itier.name) )) {
+                        : _blacklistTier.Contains(itier.name)))
+                {
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: tier blacklisted by server.");
                     return;
                 }
-                if(_blacklistItem.Contains(idef.nameToken)) {
+                if (_blacklistItem.Contains(idef.nameToken))
+                {
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: item blacklisted by server.");
                     return;
                 }
                 if (serverConfig.theConcequencesOfYourActions && count < 2 && (itier.name == "VoidTier1Def" || itier.name == "VoidTier2Def" || itier.name == "VoidTier3Def" || itier.name == "VoidBossDef"))
-                { 
+                {
                     NetUtil.ServerSendChatMsg(args.sender, $"Can't yeet {pickupText}: you must live with the consequences of your actions.");
                     return;
                 }
 
                 var attemptThrowCount = args.TryGetArgInt(3) ?? 1;
-                if(attemptThrowCount < 0)
+                if (attemptThrowCount < 0)
                     attemptThrowCount = Mathf.CeilToInt(count / ((-attemptThrowCount) * 100f));
                 throwCount = Mathf.Clamp(attemptThrowCount, 1, Mathf.Min(serverConfig.maxThrowCount, count));
                 args.senderBody.inventory.RemoveItemPermanent((ItemIndex)rawInd, throwCount);
                 pickup = PickupCatalog.FindPickupIndex((ItemIndex)rawInd);
             }
 
-            if(serverConfig.announce)
+            if (serverConfig.announce)
                 NetUtil.ServerSendGlobalChatMsg($"{Util.EscapeRichTextForTextMeshPro(args.sender.userName)} yeeted {throwCount}x {pickupText}");
 
-            for(var i = 0; i < throwCount; i++) {
+            for (var i = 0; i < throwCount; i++)
+            {
                 var obj = GameObject.Instantiate(PickupDropletController.pickupDropletPrefab, args.senderBody.inputBank.aimOrigin, Quaternion.identity);
+
+
                 var pdyd = obj.AddComponent<YeetData>();
                 pdyd.yeeter = args.senderBody;
+
+
                 var pdcComponent = obj.GetComponent<PickupDropletController>();
-                if(pdcComponent) {
-                  pdcComponent.pickupState = pdcComponent.pickupState.WithPickupIndex(pickup);
-                  pdcComponent.createPickupInfo = new GenericPickupController.CreatePickupInfo {
-                      rotation = Quaternion.identity,
-                      pickup = new UniquePickup(pickup)
-                  }; 
+
+                if (pdcComponent)
+                {
+
+                    pdcComponent.pickupState = pdcComponent.pickupState.WithPickupIndex(pickup);
+                    pdcComponent.createPickupInfo = new GenericPickupController.CreatePickupInfo
+                    {
+                        rotation = Quaternion.identity,
+                        pickup = new UniquePickup(pickup)
+                    };
                 }
+
+
 
                 var rbdy = obj.GetComponent<Rigidbody>();
                 rbdy.velocity = args.senderBody.inputBank.aimDirection * throwForce;
@@ -355,55 +416,94 @@ namespace ThinkInvisible.Jfork.Yeet {
         }
 
         #region Hooks
-        private void GenericPickupController_OnTriggerStay(On.RoR2.GenericPickupController.orig_OnTriggerStay orig, GenericPickupController self, Collider other) {
-            if(NetworkServer.active) {
+        private void GenericPickupController_OnTriggerStay(On.RoR2.GenericPickupController.orig_OnTriggerStay orig, GenericPickupController self, Collider other)
+        {
+            if (NetworkServer.active)
+            {
                 var cb = other.GetComponent<CharacterBody>();
                 var yd = self.GetComponent<YeetData>();
-                if(cb && yd && yd.yeeter == cb && yd.age < serverConfig.yoinkCooldown) {
+                if (cb && yd && yd.yeeter == cb && yd.age < serverConfig.yoinkCooldown)
+                {
                     return;
                 }
             }
             orig(self, other);
         }
 
-        private Interactability GenericPickupController_GetInteractability(On.RoR2.GenericPickupController.orig_GetInteractability orig, GenericPickupController self, Interactor activator) {
+        private Interactability GenericPickupController_GetInteractability(On.RoR2.GenericPickupController.orig_GetInteractability orig, GenericPickupController self, Interactor activator)
+        {
             var retv = orig(self, activator);
             var yd = self.GetComponent<YeetData>();
             var actBody = activator.GetComponent<CharacterBody>();
-            if(yd && actBody && yd.yeeter == actBody && yd.age < serverConfig.yoinkCooldown) {
+            if (yd && actBody && yd.yeeter == actBody && yd.age < serverConfig.yoinkCooldown)
+            {
                 return Interactability.Disabled;
             }
             return retv;
         }
 
-        private void PickupDropletController_OnCollisionEnter(On.RoR2.PickupDropletController.orig_OnCollisionEnter orig, PickupDropletController self, Collision collision) {
-            if(!NetworkServer.active || !self.alive) {
+        private void PickupDropletController_OnCollisionEnter(On.RoR2.PickupDropletController.orig_OnCollisionEnter orig, PickupDropletController self, Collision collision)
+        {
+            if (!NetworkServer.active || !self.alive)
+            {
                 orig(self, collision);
                 return;
             }
             bool wasCmd = false;
             var yd = self.GetComponent<YeetData>();
-            if(yd) {
-                if(!serverConfig.commandExtraCheesyMode)
+            Debug.Log(yd);
+            if (yd)
+            {
+                if (!serverConfig.commandExtraCheesyMode)
                     wasCmd = RunArtifactManager.enabledArtifactsEnumerable.Contains(RoR2Content.Artifacts.Command);
-                if(wasCmd) RunArtifactManager.instance.SetArtifactEnabledServer(RoR2Content.Artifacts.Command, false);
-
-                if(!yeetPickupPrefab) {
+                if (wasCmd) { RunArtifactManager.instance.SetArtifactEnabledServer(RoR2Content.Artifacts.Command, false); }
+                if (!yeetPickupPrefab)
+                {
                     orig(self, collision);
-                } else {
+                }
+                else
+                {
                     //GenericPickupController.CreatePickup only allows in a struct which makes it very hard to pass in any extra information *fine I'll do it myself*
                     self.alive = false;
                     self.createPickupInfo.position = self.transform.position;
+                    GameObject newPickup = null;
+                    //this simple fix took ten hours... at least it was a learning experience i guess
+                    //and in hindsight it probably could have been done in 5 minutes
+                    if (serverConfig.commandExtraCheesyMode && RunArtifactManager.enabledArtifactsEnumerable.Contains(RoR2Content.Artifacts.Command))
+                    {
+                        orig(self, collision);
 
-                    var newPickup = Instantiate(yeetPickupPrefab, self.createPickupInfo.position, self.createPickupInfo.rotation);
-                    var pickupController = newPickup.GetComponent<GenericPickupController>();
-                    if(pickupController) {
-                        pickupController.Network_pickupState = self.createPickupInfo.pickup;
-                        if(serverConfig.preventRecycling)
-                            pickupController.NetworkRecycled = true;
+                        GameObject THATFUCKINGCUBETHATIHATE = RoR2.Artifacts.CommandArtifactManager.commandCubePrefab;
+                        if (!THATFUCKINGCUBETHATIHATE)
+                        {
+                            orig(self, collision); Logger.LogDebug("not sure this is suposed to run"); return;
+                        }
+
+                        newPickup = Instantiate(THATFUCKINGCUBETHATIHATE, self.createPickupInfo.position, self.createPickupInfo.rotation);
+                        newPickup.AddComponent<YeetData>();
+                        var pickerController = newPickup.GetComponent<PickupPickerController>();
+                        if (pickerController)
+                        {
+                            PickupPickerController.Option[] Options = PickupPickerController.GetOptionsFromPickupState(self.createPickupInfo.pickup);
+                            pickerController.SetOptionsServer(Options);
+                        }
                     }
+                    else
+                    {
+                        newPickup = Instantiate(yeetPickupPrefab, self.createPickupInfo.position, self.createPickupInfo.rotation);
+                        var pickupController = newPickup.GetComponent<GenericPickupController>();
+
+                        if (pickupController)
+                        {
+                            pickupController.Network_pickupState = self.createPickupInfo.pickup;
+                            if (serverConfig.preventRecycling)
+                                pickupController.NetworkRecycled = true;
+                        }
+                    }
+
                     var pickupIndexNetworker = newPickup.GetComponent<PickupIndexNetworker>();
-                    if(pickupIndexNetworker)
+                    if (pickupIndexNetworker)
+
                         pickupIndexNetworker.NetworkpickupState = self.createPickupInfo.pickup;
                     //no options, should only ever yeet one item
                     var pickupYeetData = newPickup.GetComponent<YeetData>();
@@ -415,61 +515,73 @@ namespace ThinkInvisible.Jfork.Yeet {
                     Destroy(self.gameObject);
                 }
 
-                if(wasCmd)
+                if (wasCmd)
                     RunArtifactManager.instance.SetArtifactEnabledServer(RoR2Content.Artifacts.Command, true);
-            } else orig(self, collision);
+            }
+            else orig(self, collision);
         }
 
-        private GenericPickupController GenericPickupController_CreatePickup(On.RoR2.GenericPickupController.orig_CreatePickup orig, ref GenericPickupController.CreatePickupInfo createPickupInfo) {
+        private GenericPickupController GenericPickupController_CreatePickup(On.RoR2.GenericPickupController.orig_CreatePickup orig, ref GenericPickupController.CreatePickupInfo createPickupInfo)
+        {
             return orig(ref createPickupInfo);
         }
 
-        private void ItemIcon_Awake(On.RoR2.UI.ItemIcon.orig_Awake orig, RoR2.UI.ItemIcon self) {
+        private void ItemIcon_Awake(On.RoR2.UI.ItemIcon.orig_Awake orig, RoR2.UI.ItemIcon self)
+        {
             orig(self);
             self.gameObject.AddComponent<YeetButton>();
         }
 
-        private void EquipmentIcon_Update(On.RoR2.UI.EquipmentIcon.orig_Update orig, RoR2.UI.EquipmentIcon self) {
+        private void EquipmentIcon_Update(On.RoR2.UI.EquipmentIcon.orig_Update orig, RoR2.UI.EquipmentIcon self)
+        {
             orig(self);
-            if(self.gameObject.GetComponent<YeetButton>()) return;
+            if (self.gameObject.GetComponent<YeetButton>()) return;
             var btn = self.gameObject.AddComponent<YeetButton>();
             btn.isEquipment = true;
         }
         #endregion
     }
 
-    public class YeetData : MonoBehaviour {
+    public class YeetData : MonoBehaviour
+    {
         public CharacterBody yeeter;
         public float age = 0f;
 
 
-        void FixedUpdate() {
+        void FixedUpdate()
+        {
             age += Time.fixedDeltaTime;
         }
     }
-    
-	public class YeetButton : MonoBehaviour, IPointerDownHandler, IPointerUpHandler {
+
+    public class YeetButton : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
+    {
         float holdTimeL = 0f;
         float holdTimeR = 0f;
         public bool isEquipment = false;
-		void IPointerDownHandler.OnPointerDown(PointerEventData eventData) {
-            if(eventData.button == PointerEventData.InputButton.Left)
+        void IPointerDownHandler.OnPointerDown(PointerEventData eventData)
+        {
+            if (eventData.button == PointerEventData.InputButton.Left)
                 holdTimeL = Time.unscaledTime;
-            else if(eventData.button == PointerEventData.InputButton.Right)
+            else if (eventData.button == PointerEventData.InputButton.Right)
                 holdTimeR = Time.unscaledTime;
-		}
-        void IPointerUpHandler.OnPointerUp(PointerEventData eventData) {
+        }
+        void IPointerUpHandler.OnPointerUp(PointerEventData eventData)
+        {
             var isL = eventData.button == PointerEventData.InputButton.Left;
             var isR = eventData.button == PointerEventData.InputButton.Right;
-            if(!isL && !isR) return;
+            if (!isL && !isR) return;
             float totalTime = Time.unscaledTime - (isL ? holdTimeL : holdTimeR);
             var ind = isEquipment
                 ? ((int)GetComponent<RoR2.UI.EquipmentIcon>().targetInventory.GetEquipmentIndex()).ToString()
                 : ((int)GetComponent<RoR2.UI.ItemIcon>().itemIndex).ToString();
-			if(NetworkUser.readOnlyLocalPlayersList.Count > 0) {
+            if (NetworkUser.localPlayers.Count > 0)
+            {
                 //RoR2.Console.instance.RunClientCmd(NetworkUser.readOnlyLocalPlayersList[0], "yeet", new string[]{((int)ind).ToString(), totalTime.ToString("N3")});
-                RoR2.Console.instance.SubmitCmd(NetworkUser.readOnlyLocalPlayersList[0], $"yeet {ind} {(isEquipment ? 1 : 0)} {totalTime:N4} {(isL ? YeetPlugin.clientConfig.primaryQuantity : YeetPlugin.clientConfig.secondaryQuantity)}");
-            } else
+                RoR2.Console.instance.SubmitCmd(NetworkUser.localPlayers[0], $"yeet {ind} {(isEquipment ? 1 : 0)} {totalTime:N4} {(isL ? YeetPlugin.clientConfig.primaryQuantity : YeetPlugin.clientConfig.secondaryQuantity)}");
+            }
+            else
                 YeetPlugin._logger.LogError("Received inventory click event with no active local players!");
         }
     }
+}
