@@ -1,12 +1,12 @@
 {
-    "name": "Yeet",
-    "version_number": "3.0.4",
-    "website_url": "https://github.com/ThinkInvis/RoR2-Yeet",
-    "description": "Toss all your items! To other players, or right under a boss, or off a cliff...",
+    "name": "Yeeting_Collectively",
+    "version_number": "3.0.7",
+    "website_url": "",
+    "description": "a modefied version of the yeet mod to work with alloyed collective (i hope)",
     "dependencies": [
         "bbepis-BepInExPack-5.4.2103",
         "RiskofThunder-R2API_Core-5.2.0",
         "RiskofThunder-R2API_Prefab-1.1.1",
-		"ThinkInvis-TILER2-7.4.3"
+		    "justJ-TILER2nt-0.0.1"
     ]
 }

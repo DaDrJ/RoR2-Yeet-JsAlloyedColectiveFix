@@ -1,18 +1,20 @@
-﻿using RoR2;
-using BepInEx;
-using R2API.Utils;
-using UnityEngine;
+﻿using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
+using R2API;
+using R2API.Utils;
+using RoR2;
+using System;
+using System.Collections.Generic;
 using System.Linq;
+using TILER2;
+using UnityEngine;
+using UnityEngine.AddressableAssets;
 using UnityEngine.EventSystems;
 using UnityEngine.Networking;
-using R2API;
-using UnityEngine.AddressableAssets;
-using TILER2;
+using UnityEngine.UIElements;
+using static Rewired.InputMapper;
 using Path = System.IO.Path;
-using System.Collections.Generic;
-using System;
 using Random = UnityEngine.Random;
 
 [assembly: HG.Reflection.SearchableAttribute.OptIn]
@@ -20,7 +22,7 @@ using Random = UnityEngine.Random;
 namespace ThinkInvisible.Jfork.Yeet {
     [BepInPlugin(ModGuid, ModName, ModVer)]
     [BepInDependency(R2API.R2API.PluginGUID, R2API.R2API.PluginVersion)]
-    [BepInDependency(TILER2Plugin.ModGuid, TILER2Plugin.ModVer)]
+    
     public class YeetPlugin:BaseUnityPlugin {
         public const string ModVer = "3.0.6";
         public const string ModName = "Yeet";
@@ -78,7 +80,7 @@ namespace ThinkInvisible.Jfork.Yeet {
             [AutoConfigRoOCheckbox()]
             public bool announce { get; private set; } = true;
 
-            [AutoConfig("If true, prevents you from dropping your last void item so you always have atleast one.")]
+            [AutoConfig("If true, prevents you from dropping your last void item so you always have at least one.")]
             [AutoConfigRoOCheckbox()]
             public bool theConcequencesOfYourActions { get; private set; } = true;
 
@@ -167,6 +169,8 @@ namespace ThinkInvisible.Jfork.Yeet {
                 }
                 var yeetPickupPrefabPrefab = res.InstantiateClone("YeetPickupPrefabPrefab");
                 yeetPickupPrefabPrefab.AddComponent<YeetData>();
+                yeetPickupPrefabPrefab.AddComponent<PickupIndexNetworker>();
+                yeetPickupPrefabPrefab.AddComponent<PickupPickerController>();
                 yeetPickupPrefab = yeetPickupPrefabPrefab.InstantiateClone("YeetPickupPrefab", true);
             };
         }
@@ -332,19 +336,30 @@ namespace ThinkInvisible.Jfork.Yeet {
             if(serverConfig.announce)
                 NetUtil.ServerSendGlobalChatMsg($"{Util.EscapeRichTextForTextMeshPro(args.sender.userName)} yeeted {throwCount}x {pickupText}");
 
-            for(var i = 0; i < throwCount; i++) {
+            for (var i = 0; i < throwCount; i++)
+            {
                 var obj = GameObject.Instantiate(PickupDropletController.pickupDropletPrefab, args.senderBody.inputBank.aimOrigin, Quaternion.identity);
+                
+
                 var pdyd = obj.AddComponent<YeetData>();
                 pdyd.yeeter = args.senderBody;
-                var pdcComponent = obj.GetComponent<PickupDropletController>();
-                if(pdcComponent) {
-                  pdcComponent.pickupState = pdcComponent.pickupState.WithPickupIndex(pickup);
-                  pdcComponent.createPickupInfo = new GenericPickupController.CreatePickupInfo {
-                      rotation = Quaternion.identity,
-                      pickup = new UniquePickup(pickup)
-                  }; 
-                }
 
+                
+                    var pdcComponent = obj.GetComponent<PickupDropletController>();
+                    
+                    if (pdcComponent)
+                    {
+                        
+                        pdcComponent.pickupState = pdcComponent.pickupState.WithPickupIndex(pickup);
+                        pdcComponent.createPickupInfo = new GenericPickupController.CreatePickupInfo
+                        {
+                            rotation = Quaternion.identity,
+                            pickup = new UniquePickup(pickup)
+                        };
+                    }
+                
+
+                
                 var rbdy = obj.GetComponent<Rigidbody>();
                 rbdy.velocity = args.senderBody.inputBank.aimDirection * throwForce;
                 rbdy.AddTorque(Random.Range(150f, 120f) * Random.onUnitSphere);
@@ -383,27 +398,57 @@ namespace ThinkInvisible.Jfork.Yeet {
             }
             bool wasCmd = false;
             var yd = self.GetComponent<YeetData>();
+            Debug.Log(yd);
             if(yd) {
                 if(!serverConfig.commandExtraCheesyMode)
                     wasCmd = RunArtifactManager.enabledArtifactsEnumerable.Contains(RoR2Content.Artifacts.Command);
-                if(wasCmd) RunArtifactManager.instance.SetArtifactEnabledServer(RoR2Content.Artifacts.Command, false);
-
-                if(!yeetPickupPrefab) {
+                if (wasCmd) { RunArtifactManager.instance.SetArtifactEnabledServer(RoR2Content.Artifacts.Command, false); Logger.LogDebug("bit ran"); }
+                if (!yeetPickupPrefab) {
                     orig(self, collision);
-                } else {
+                }
+                else
+                {
                     //GenericPickupController.CreatePickup only allows in a struct which makes it very hard to pass in any extra information *fine I'll do it myself*
                     self.alive = false;
                     self.createPickupInfo.position = self.transform.position;
+                    GameObject newPickup = null;
+                     //this simple fix took ten hours... at least it was a learning experience i guess
+                     //and in hindsight it probably could have been done in 5 minutes
+                    if (serverConfig.commandExtraCheesyMode && RunArtifactManager.enabledArtifactsEnumerable.Contains(RoR2Content.Artifacts.Command))
+                    {
+                        orig(self, collision);
 
-                    var newPickup = Instantiate(yeetPickupPrefab, self.createPickupInfo.position, self.createPickupInfo.rotation);
-                    var pickupController = newPickup.GetComponent<GenericPickupController>();
-                    if(pickupController) {
-                        pickupController.Network_pickupState = self.createPickupInfo.pickup;
-                        if(serverConfig.preventRecycling)
-                            pickupController.NetworkRecycled = true;
+                        GameObject THATFUCKINGCUBETHATIHATE = RoR2.Artifacts.CommandArtifactManager.commandCubePrefab;
+                        if (!THATFUCKINGCUBETHATIHATE)
+                        {
+                            orig(self, collision); Logger.LogDebug("not sure this is suposed to run"); return;
+                        }
+
+                        newPickup = Instantiate(THATFUCKINGCUBETHATIHATE, self.createPickupInfo.position, self.createPickupInfo.rotation);
+                        newPickup.AddComponent<YeetData>();
+                        var pickerController = newPickup.GetComponent<PickupPickerController>();
+                        if (pickerController)
+                        {
+                            PickupPickerController.Option[] Options = PickupPickerController.GetOptionsFromPickupState(self.createPickupInfo.pickup);
+                            pickerController.SetOptionsServer(Options);
+                        }
                     }
+                    else
+                    {
+                        newPickup = Instantiate(yeetPickupPrefab, self.createPickupInfo.position, self.createPickupInfo.rotation);
+                        var pickupController = newPickup.GetComponent<GenericPickupController>();
+
+                        if (pickupController)
+                        {
+                            pickupController.Network_pickupState = self.createPickupInfo.pickup;
+                            if (serverConfig.preventRecycling)
+                                pickupController.NetworkRecycled = true;
+                        }
+                    }
+                    
                     var pickupIndexNetworker = newPickup.GetComponent<PickupIndexNetworker>();
-                    if(pickupIndexNetworker)
+                    if (pickupIndexNetworker)
+                        Logger.LogDebug("pickupnetworker is here");
                         pickupIndexNetworker.NetworkpickupState = self.createPickupInfo.pickup;
                     //no options, should only ever yeet one item
                     var pickupYeetData = newPickup.GetComponent<YeetData>();
@@ -466,9 +511,9 @@ namespace ThinkInvisible.Jfork.Yeet {
             var ind = isEquipment
                 ? ((int)GetComponent<RoR2.UI.EquipmentIcon>().targetInventory.GetEquipmentIndex()).ToString()
                 : ((int)GetComponent<RoR2.UI.ItemIcon>().itemIndex).ToString();
-			if(NetworkUser.readOnlyLocalPlayersList.Count > 0) {
+			if(NetworkUser.localPlayers.Count > 0) {
                 //RoR2.Console.instance.RunClientCmd(NetworkUser.readOnlyLocalPlayersList[0], "yeet", new string[]{((int)ind).ToString(), totalTime.ToString("N3")});
-                RoR2.Console.instance.SubmitCmd(NetworkUser.readOnlyLocalPlayersList[0], $"yeet {ind} {(isEquipment ? 1 : 0)} {totalTime:N4} {(isL ? YeetPlugin.clientConfig.primaryQuantity : YeetPlugin.clientConfig.secondaryQuantity)}");
+                RoR2.Console.instance.SubmitCmd(NetworkUser.localPlayers[0], $"yeet {ind} {(isEquipment ? 1 : 0)} {totalTime:N4} {(isL ? YeetPlugin.clientConfig.primaryQuantity : YeetPlugin.clientConfig.secondaryQuantity)}");
             } else
                 YeetPlugin._logger.LogError("Received inventory click event with no active local players!");
         }
