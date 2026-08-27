@@ -24,7 +24,7 @@ namespace ThinkInvisible.Jfork.Yeet {
     [BepInDependency(R2API.R2API.PluginGUID, R2API.R2API.PluginVersion)]
     
     public class YeetPlugin:BaseUnityPlugin {
-        public const string ModVer = "3.0.6";
+        public const string ModVer = "3.0.7";
         public const string ModName = "Yeet";
         public const string ModGuid = "com.ThinkInvisible.Jfork.Yeet";
 
